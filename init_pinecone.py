@@ -1,5 +1,5 @@
 import os
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 
 def initialize_pinecone():
     """
@@ -21,7 +21,12 @@ def initialize_pinecone():
             name=index_name,
             dimension=int(os.getenv("EMBEDDING_DIMENSION", 4096)),
             metric="cosine",
-            spec=ServerlessSpec(cloud="aws", region="us-west-2")
+            spec={
+                "serverless": {
+                    "cloud": "aws",
+                    "region": "us-east-1"
+                }
+            }
         )
         print(f"Index {index_name} created successfully")
     else:
