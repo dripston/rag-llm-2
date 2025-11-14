@@ -105,9 +105,29 @@ class PineconeService:
             response_dict = vars(response)
             matches = response_dict.get('matches', [])
             logger.info(f"Query returned {len(matches)} matches")
+            
+            # Log details about matches for debugging
+            for i, match in enumerate(matches):
+                logger.debug(f"Match {i+1}: id={match.get('id')}, score={match.get('score')}, metadata_keys={list(match.get('metadata', {}).keys())}")
+            
             return matches
         except Exception as e:
             logger.error(f"Error querying vectors: {e}")
+            logger.exception(e)
+            return []
+    
+    def list_vectors(self) -> List[str]:
+        """
+        List all vector IDs in the index (for debugging purposes)
+        """
+        try:
+            logger.info("Listing vectors in index")
+            # Note: Pinecone doesn't have a direct list all IDs method in the new API
+            # We'll return an empty list for now
+            logger.info("Vector listing not implemented in new Pinecone API")
+            return []
+        except Exception as e:
+            logger.error(f"Error listing vectors: {e}")
             logger.exception(e)
             return []
     

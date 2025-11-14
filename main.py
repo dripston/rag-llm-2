@@ -56,6 +56,35 @@ async def health_check():
     logger.info("Health check endpoint accessed")
     return {"status": "healthy"}
 
+# Debug endpoint to test Pinecone connection
+@app.get("/debug/pinecone")
+async def debug_pinecone():
+    logger.info("Pinecone debug endpoint accessed")
+    if rag_service is None:
+        logger.error("RAG service not initialized")
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+    
+    try:
+        # Test Pinecone connection by listing indexes
+        from pinecone import Pinecone
+        pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+        indexes = pc.list_indexes().names()
+        logger.info(f"Pinecone indexes: {indexes}")
+        
+        # Test querying the index
+        test_vector = [0.1] * 4096
+        matches = rag_service.vector_store.query_similar(test_vector, top_k=1)
+        logger.info(f"Test query returned {len(matches)} matches")
+        
+        return {
+            "indexes": list(indexes),
+            "test_query_matches": len(matches)
+        }
+    except Exception as e:
+        logger.error(f"Error in Pinecone debug: {e}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail=f"Error in Pinecone debug: {str(e)}")
+
 # RAG Query endpoint
 @app.post("/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
