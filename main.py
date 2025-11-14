@@ -42,10 +42,22 @@ async def log_requests(request: Request, call_next):
         body = await request.body()
         if body:
             try:
+                # Try UTF-8 decoding first
                 body_str = body.decode("utf-8")
                 logger.info(f"Request body: {body_str}")
+            except UnicodeDecodeError:
+                # If UTF-8 fails, try with error handling
+                try:
+                    body_str = body.decode("utf-8", errors="replace")
+                    logger.warning(f"Request body (with replaced errors): {body_str}")
+                except Exception as e:
+                    logger.error(f"Could not decode request body: {e}")
+                    # Log raw bytes length for debugging
+                    logger.info(f"Request body bytes length: {len(body)}")
             except Exception as e:
-                logger.warning(f"Could not decode request body: {e}")
+                logger.error(f"Could not decode request body: {e}")
+                # Log raw bytes length for debugging
+                logger.info(f"Request body bytes length: {len(body)}")
     
     response = await call_next(request)
     return response
