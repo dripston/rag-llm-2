@@ -54,7 +54,7 @@ class PineconeService:
     # -------------------------------------------------------------------------
     # UPSERT VECTORS
     # -------------------------------------------------------------------------
-    def upsert_vectors(self, vectors: List[Dict[str, Any]]) -> bool:
+    def upsert_vectors(self, vectors) -> bool:
         try:
             if not vectors:
                 logger.warning("No vectors to upsert")
@@ -67,6 +67,12 @@ class PineconeService:
                     )
 
             logger.info(f"Upserting {len(vectors)} vectors…")
+            
+            # Add logging for the first vector to debug
+            if vectors:
+                logger.info(f"First vector ID: {vectors[0].get('id', 'N/A')}")
+                logger.info(f"First vector dimension: {len(vectors[0].get('values', []))}")
+                logger.info(f"First vector metadata keys: {list(vectors[0].get('metadata', {}).keys())}")
 
             self.index.upsert(vectors=vectors)
             logger.info("✔ Upsert successful")
@@ -81,7 +87,7 @@ class PineconeService:
     # -------------------------------------------------------------------------
     # QUERY SIMILAR VECTORS
     # -------------------------------------------------------------------------
-    def query_similar(self, query_vector: List[float], top_k: int = 5) -> List[Dict]:
+    def query_similar(self, query_vector, top_k: int = 5):
         try:
             if len(query_vector) != self.dimension:
                 raise ValueError(

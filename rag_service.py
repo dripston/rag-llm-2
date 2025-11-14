@@ -18,175 +18,145 @@ class RAGService:
         self.llm_service = SambaNovaLLM()
         logger.info("LLM service initialized")
         logger.info("RAG service components initialized successfully")
-        
+
     def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:
         """
-        Split text into chunks of specified size with overlap
-        
-        Args:
-            text: Text to chunk
-            chunk_size: Maximum size of each chunk
-            overlap: Number of characters to overlap between chunks
-            
-        Returns:
-            List of text chunks
+        Split text into chunks with overlap.
+
+        Fixed edge-cases:
+        - Prevents negative start index when overlap > chunk length.
+        - Breaks if start doesn't advance to avoid infinite loops.
+        - Adds a defensive max-iterations guard.
         """
-        logger.debug(f"Chunking text of length {len(text)} with chunk_size={chunk_size}, overlap={overlap}")
-        chunks = []
-        start = 0
+        if not text:
+            return []
+
+        chunks: List[str] = []
         text_length = len(text)
-        
-        while start < text_length:
+        start = 0
+
+        # Defensive guard to avoid accidental infinite loops
+        max_iterations = max(10, (text_length // max(1, chunk_size - overlap)) + 10)
+        iterations = 0
+
+        while start < text_length and iterations < max_iterations:
             end = min(start + chunk_size, text_length)
-            chunk = text[start:end]
-            chunks.append(chunk)
-            logger.debug(f"Created chunk {len(chunks)} with length {len(chunk)}")
-            
-            # Move start position
-            start = end - overlap
-            if start >= text_length:
-                break
-                
-            # If we're at the end and have a small chunk, break
-            if end == text_length:
-                break
-                
-        logger.debug(f"Text chunking completed. Total chunks: {len(chunks)}")
+            # append the chunk slice
+            chunks.append(text[start:end])
+
+            # compute next start taking care not to go negative
+            next_start = max(0, end - overlap)
+
+            # If next_start doesn't move forward, break to prevent infinite loop
+            if next_start <= start:
+                # try to move to end to finish
+                if end >= text_length:
+                    break
+                # otherwise move to end (no overlap)
+                start = end
+            else:
+                start = next_start
+
+            iterations += 1
+
+        if iterations >= max_iterations:
+            logger.warning(
+                "_chunk_text reached max_iterations; text_length=%d, chunk_size=%d, overlap=%d",
+                text_length, chunk_size, overlap
+            )
+
         return chunks
-    
+
+    def _combine_text_for_embedding(self, chunk: str, metadata: Dict[str, Any]) -> str:
+        """
+        Combine metadata + chunk content for embedding.
+        """
+        patient_name = metadata.get("patient_name", "")
+        patient_id = metadata.get("patient_id", "")
+        patient_age = metadata.get("age", "")
+        patient_gender = metadata.get("gender", "")
+        date_time = metadata.get("date_time", "")
+
+        combined_text = (
+            f"Patient Name: {patient_name}\n"
+            f"Patient ID: {patient_id}\n"
+            f"Age: {patient_age}\n"
+            f"Gender: {patient_gender}\n"
+            f"Date/Time: {date_time}\n\n"
+            f"Medical Notes: {chunk}"
+        )
+
+        return combined_text
+
     def add_document(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
-        """
-        Add a document to the RAG system with chunking
-        
-        Args:
-            content: Document content
-            metadata: Additional metadata for the document
-            
-        Returns:
-            True if successful, False otherwise
-        """
         try:
-            logger.info(f"Adding document with content length: {len(content)}")
-            # Chunk the content
+            logger.info(f"Starting document addition. Content length: {len(content) if content else 0}")
+            logger.info(f"Metadata: {metadata}")
             chunks = self._chunk_text(content)
             logger.info(f"Document chunked into {len(chunks)} chunks")
-            
-            # Process each chunk
             vector_data = []
+
             for i, chunk in enumerate(chunks):
-                logger.debug(f"Processing chunk {i+1}/{len(chunks)}")
-                # Generate embedding
-                logger.debug("Generating embedding for chunk...")
-                embedding = self.embedding_service.get_single_embedding(chunk)
-                logger.debug(f"Embedding generated with dimension: {len(embedding)}")
-                
-                # Create document ID
+                logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+
+                combined_text = self._combine_text_for_embedding(chunk, metadata or {})
+                logger.info(f"Combined text length: {len(combined_text)}")
+
+                embedding = self.embedding_service.get_single_embedding(combined_text)
+                logger.info(f"Embedding generated. Dimension: {len(embedding) if embedding else 0}")
+
                 doc_id = str(uuid.uuid4())
-                logger.debug(f"Generated document ID: {doc_id}")
-                
-                # Prepare metadata
+                logger.info(f"Generated document ID: {doc_id}")
+
                 chunk_metadata = metadata.copy() if metadata else {}
                 chunk_metadata["content"] = chunk
                 chunk_metadata["chunk_index"] = i
                 chunk_metadata["total_chunks"] = len(chunks)
-                
-                # Store in vector database
-                vector_entry = {
+                logger.info(f"Chunk metadata: {chunk_metadata}")
+
+                vector_data.append({
                     "id": doc_id,
                     "values": embedding,
                     "metadata": chunk_metadata
-                }
-                vector_data.append(vector_entry)
-                logger.debug(f"Chunk {i+1} processed successfully. Vector ID: {doc_id}")
-            
-            logger.info(f"Upserting {len(vector_data)} vectors to Pinecone...")
-            logger.debug(f"Vector data sample: {vector_data[0] if vector_data else 'No vectors'}")
+                })
+                logger.info(f"Chunk {i+1} processed successfully")
+
+            if not vector_data:
+                logger.info("No vectors to upsert (empty document after chunking). Skipping upsert.")
+                return True
+
+            logger.info(f"Upserting {len(vector_data)} vectors to Pinecone")
             result = self.vector_store.upsert_vectors(vector_data)
-            logger.info(f"Document addition result: {result}")
+            logger.info(f"Vector upsert result: {result}")
             return result
+
         except Exception as e:
             logger.error(f"Error adding document: {e}")
             logger.exception(e)
             return False
-    
+
     def query(self, query_text: str, top_k: int = 3) -> str:
-        """
-        Query the RAG system and generate a response
-        
-        Args:
-            query_text: User query
-            top_k: Number of similar documents to retrieve
-            
-        Returns:
-            Generated response
-        """
         try:
-            logger.info(f"Processing query: {query_text}")
-            # Generate query embedding
-            logger.debug("Generating embedding for query...")
             query_embedding = self.embedding_service.get_single_embedding(query_text)
-            logger.debug(f"Query embedding generated with dimension: {len(query_embedding)}")
-            
-            # Retrieve similar documents
-            logger.debug(f"Querying vector store for top {top_k} similar documents...")
+
             similar_docs = self.vector_store.query_similar(query_embedding, top_k)
-            logger.info(f"Retrieved {len(similar_docs)} similar documents")
-            
-            # Log details about retrieved documents
-            for i, doc in enumerate(similar_docs):
-                logger.debug(f"Retrieved doc {i+1}: id={doc.get('id')}, score={doc.get('score')}")
-            
-            # Extract context from similar documents
+
             context_parts = []
             for doc in similar_docs:
-                # Handle both dict and string formats for metadata
-                if isinstance(doc, dict) and "metadata" in doc:
-                    if isinstance(doc["metadata"], dict) and "content" in doc["metadata"]:
-                        context_parts.append(doc["metadata"]["content"])
-                    elif isinstance(doc["metadata"], str):
-                        # Try to parse metadata string
-                        try:
-                            import ast
-                            metadata_dict = ast.literal_eval(doc["metadata"])
-                            if "content" in metadata_dict:
-                                context_parts.append(metadata_dict["content"])
-                        except:
-                            logger.warning(f"Could not parse metadata string: {doc['metadata']}")
-                else:
-                    logger.warning(f"Unexpected document format: {doc}")
-            
+                meta = doc.get("metadata", {})
+                if isinstance(meta, dict) and "content" in meta:
+                    context_parts.append(meta["content"])
+
             context = "\n\n".join(context_parts)
-            logger.debug(f"Context extracted with length: {len(context)}")
-            logger.info(f"Context for LLM: {context[:200]}...")  # Log first 200 chars
-            
-            # Generate response using LLM
-            logger.debug("Generating response with LLM...")
+
             response = self.llm_service.generate_response_with_context(context, query_text)
-            logger.info("Response generated successfully")
-            
+
             return response
+
         except Exception as e:
             logger.error(f"Error querying RAG system: {e}")
-            logger.exception(e)
-            return "Sorry, I encountered an error while processing your query."
-    
+            return "Sorry, an error occurred."
+
     def update_document(self, doc_id: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
-        """
-        Update an existing document in the RAG system
-        
-        Args:
-            doc_id: Document ID
-            content: Updated content
-            metadata: Updated metadata
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        logger.info(f"Updating document with ID: {doc_id}")
-        # Delete the old document
         self.vector_store.delete_vectors([doc_id])
-        
-        # Add the updated document
-        result = self.add_document(content, metadata)
-        logger.info(f"Document update result: {result}")
-        return result
+        return self.add_document(content, metadata)

@@ -39,11 +39,21 @@ class SambaNovaEmbedding:
         }
         
         logger.debug("Calling SambaNova embeddings API...")
-        response = requests.post(
-            f"{self.base_url}/embeddings",
-            headers=headers,
-            json=payload
-        )
+        logger.info(f"API endpoint: {self.base_url}/embeddings")
+        logger.info(f"Headers: {headers}")
+        logger.info(f"Payload texts count: {len(texts)}")
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/embeddings",
+                headers=headers,
+                json=payload,
+                timeout=30  # Add timeout to prevent hanging
+            )
+            logger.info(f"SambaNova API response status: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error calling SambaNova API: {e}")
+            raise Exception(f"Error calling SambaNova API: {e}")
         
         if response.status_code != 200:
             logger.error(f"Error getting embeddings: {response.text}")

@@ -46,11 +46,17 @@ class SambaNovaLLM:
         }
         
         logger.debug("Calling SambaNova chat completions API...")
-        response = requests.post(
-            f"{self.base_url}/chat/completions",
-            headers=headers,
-            json=payload
-        )
+        try:
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60  # Add timeout to prevent hanging
+            )
+            logger.info(f"SambaNova API response status: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error calling SambaNova API: {e}")
+            raise Exception(f"Error calling SambaNova API: {e}")
         
         if response.status_code != 200:
             logger.error(f"Error generating response: {response.text}")
