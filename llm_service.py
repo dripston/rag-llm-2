@@ -90,7 +90,7 @@ class SambaNovaLLM:
             context = "No relevant medical history found in the database."
         
         # Create a cleaner prompt format
-        system_message = "You are an advanced medical RAG assistant. You must strictly use the provided context for every answer. If the answer is not found in the context, say 'I could not find this information in the patient's medical records.'"
+        system_message = """You are an advanced medical RAG assistant. You must strictly use the provided context for every answer. The context may include metadata in square brackets such as [Patient: John Doe, Patient ID: P12345] followed by the medical content. Use both the metadata and content to answer questions. If the answer is not found in the context, say 'I could not find this information in the patient's medical records.'"""
         
         user_message = f"""Context:
 {context}

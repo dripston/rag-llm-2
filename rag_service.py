@@ -70,22 +70,40 @@ class RAGService:
     def _combine_text_for_embedding(self, chunk: str, metadata: Dict[str, Any]) -> str:
         """
         Combine metadata + chunk content for embedding.
+        This ensures that queries about patient names, IDs, and other metadata
+        will match the stored documents.
         """
-        patient_name = metadata.get("patient_name", "")
-        patient_id = metadata.get("patient_id", "")
+        # Extract all possible metadata fields
+        patient_name = metadata.get("patient_name", metadata.get("patient", ""))
+        patient_id = metadata.get("patient_id", metadata.get("id", ""))
         patient_age = metadata.get("age", "")
         patient_gender = metadata.get("gender", "")
-        date_time = metadata.get("date_time", "")
-
-        combined_text = (
-            f"Patient Name: {patient_name}\n"
-            f"Patient ID: {patient_id}\n"
-            f"Age: {patient_age}\n"
-            f"Gender: {patient_gender}\n"
-            f"Date/Time: {date_time}\n\n"
-            f"Medical Notes: {chunk}"
-        )
-
+        date_time = metadata.get("date_time", metadata.get("visit_date", metadata.get("date", "")))
+        doctor = metadata.get("doctor", "")
+        source = metadata.get("source", "")
+        
+        # Build a comprehensive text representation
+        parts = []
+        
+        if patient_name:
+            parts.append(f"Patient Name: {patient_name}")
+        if patient_id:
+            parts.append(f"Patient ID: {patient_id}")
+        if patient_age:
+            parts.append(f"Age: {patient_age}")
+        if patient_gender:
+            parts.append(f"Gender: {patient_gender}")
+        if date_time:
+            parts.append(f"Date/Time: {date_time}")
+        if doctor:
+            parts.append(f"Doctor: {doctor}")
+        if source:
+            parts.append(f"Source: {source}")
+            
+        # Add the main content
+        parts.append(f"Medical Notes: {chunk}")
+        
+        combined_text = "\n".join(parts)
         return combined_text
 
     def add_document(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
@@ -137,24 +155,48 @@ class RAGService:
 
     def query(self, query_text: str, top_k: int = 3) -> str:
         try:
+            logger.info(f"Processing query: '{query_text}' with top_k={top_k}")
             query_embedding = self.embedding_service.get_single_embedding(query_text)
 
             similar_docs = self.vector_store.query_similar(query_embedding, top_k)
+            logger.info(f"Found {len(similar_docs)} similar documents")
 
             context_parts = []
             for doc in similar_docs:
                 meta = doc.get("metadata", {})
                 if isinstance(meta, dict) and "content" in meta:
-                    context_parts.append(meta["content"])
+                    # Include relevant metadata in the context
+                    metadata_info = []
+                    if meta.get("patient_name"):
+                        metadata_info.append(f"Patient: {meta['patient_name']}")
+                    if meta.get("patient_id"):
+                        metadata_info.append(f"Patient ID: {meta['patient_id']}")
+                    if meta.get("date_time"):
+                        metadata_info.append(f"Date: {meta['date_time']}")
+                    if meta.get("doctor"):
+                        metadata_info.append(f"Doctor: {meta['doctor']}")
+                    
+                    # Create a more informative context entry
+                    context_entry = meta["content"]
+                    if metadata_info:
+                        context_entry = f"[{', '.join(metadata_info)}] {context_entry}"
+                    
+                    context_parts.append(context_entry)
+                    logger.info(f"Adding context from document ID: {doc.get('id', 'N/A')}")
 
             context = "\n\n".join(context_parts)
+            logger.info(f"Combined context length: {len(context)}")
 
-            response = self.llm_service.generate_response_with_context(context, query_text)
-
+            if context:
+                response = self.llm_service.generate_response_with_context(context, query_text)
+            else:
+                response = "I could not find this information in the patient's medical records."
+                
             return response
 
         except Exception as e:
             logger.error(f"Error querying RAG system: {e}")
+            logger.exception(e)
             return "Sorry, an error occurred."
 
     def update_document(self, doc_id: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
