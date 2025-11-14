@@ -60,6 +60,9 @@ class PineconeService:
         """
         try:
             logger.info(f"Upserting {len(vectors)} vectors to Pinecone index")
+            if vectors:
+                logger.debug(f"First vector sample - ID: {vectors[0]['id']}, Values length: {len(vectors[0]['values'])}, Metadata keys: {list(vectors[0]['metadata'].keys())}")
+            
             # Convert to the format expected by Pinecone
             formatted_vectors = []
             for vector in vectors:
@@ -70,7 +73,8 @@ class PineconeService:
                 })
             
             logger.debug("Calling Pinecone upsert...")
-            self.index.upsert(vectors=formatted_vectors)
+            response = self.index.upsert(vectors=formatted_vectors)
+            logger.debug(f"Pinecone upsert response: {response}")
             logger.info("Vectors upserted successfully")
             return True
         except Exception as e:
@@ -100,6 +104,7 @@ class PineconeService:
                 include_metadata=True
             )
             logger.debug("Pinecone query completed")
+            logger.debug(f"Raw Pinecone response: {response}")
             
             # Convert response to dictionary using vars() and access matches
             response_dict = vars(response)
@@ -137,7 +142,8 @@ class PineconeService:
         """
         try:
             logger.info(f"Deleting {len(ids)} vectors from Pinecone index")
-            self.index.delete(ids=ids)
+            response = self.index.delete(ids=ids)
+            logger.debug(f"Pinecone delete response: {response}")
             logger.info("Vectors deleted successfully")
             return True
         except Exception as e:

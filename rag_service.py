@@ -91,14 +91,16 @@ class RAGService:
                 chunk_metadata["total_chunks"] = len(chunks)
                 
                 # Store in vector database
-                vector_data.append({
+                vector_entry = {
                     "id": doc_id,
                     "values": embedding,
                     "metadata": chunk_metadata
-                })
-                logger.debug(f"Chunk {i+1} processed successfully")
+                }
+                vector_data.append(vector_entry)
+                logger.debug(f"Chunk {i+1} processed successfully. Vector ID: {doc_id}")
             
             logger.info(f"Upserting {len(vector_data)} vectors to Pinecone...")
+            logger.debug(f"Vector data sample: {vector_data[0] if vector_data else 'No vectors'}")
             result = self.vector_store.upsert_vectors(vector_data)
             logger.info(f"Document addition result: {result}")
             return result
@@ -129,6 +131,10 @@ class RAGService:
             logger.debug(f"Querying vector store for top {top_k} similar documents...")
             similar_docs = self.vector_store.query_similar(query_embedding, top_k)
             logger.info(f"Retrieved {len(similar_docs)} similar documents")
+            
+            # Log details about retrieved documents
+            for i, doc in enumerate(similar_docs):
+                logger.debug(f"Retrieved doc {i+1}: id={doc.get('id')}, score={doc.get('score')}")
             
             # Extract context from similar documents
             context = "\n\n".join([doc["metadata"]["content"] for doc in similar_docs])
