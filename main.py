@@ -4,7 +4,6 @@ from typing import List, Optional
 import os
 from dotenv import load_dotenv
 from rag_service import RAGService
-from webhook_processor import WebhookProcessor
 import json
 
 # Load environment variables
@@ -14,17 +13,15 @@ app = FastAPI(title="Medical RAG Chatbot", description="A RAG chatbot for medica
 
 # Initialize services
 rag_service = None
-webhook_processor = None
 
 @app.on_event("startup")
 async def startup_event():
-    global rag_service, webhook_processor
+    global rag_service
     try:
         rag_service = RAGService()
-        webhook_processor = WebhookProcessor(rag_service)
-        print("Services initialized successfully")
+        print("RAG service initialized successfully")
     except Exception as e:
-        print(f"Error initializing services: {e}")
+        print(f"Error initializing RAG service: {e}")
 
 # Models
 class QueryRequest(BaseModel):
@@ -37,11 +34,6 @@ class QueryResponse(BaseModel):
 class DocumentRequest(BaseModel):
     content: str
     metadata: Optional[dict] = None
-
-class WebhookData(BaseModel):
-    event: str
-    table: str
-    data: dict
 
 # Health check endpoint
 @app.get("/")
@@ -57,38 +49,21 @@ async def health_check():
 async def query_rag(request: QueryRequest):
     if rag_service is None:
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-    response = rag_service.query(request.query, request.top_k)
+    # Use default value if top_k is None
+    top_k = request.top_k if request.top_k is not None else 3
+    response = rag_service.query(request.query, top_k)
     return QueryResponse(response=response)
 
-# Add document endpoint
+# Add document endpoint - users send content via POST request
 @app.post("/documents")
 async def add_document(request: DocumentRequest):
     if rag_service is None:
         raise HTTPException(status_code=500, detail="RAG service not initialized")
     success = rag_service.add_document(request.content, request.metadata)
     if success:
-        return {"message": "Document added successfully"}
+        return {"message": "Document chunked, embedded, and stored successfully"}
     else:
-        raise HTTPException(status_code=500, detail="Failed to add document")
-
-# Webhook endpoint for PostgreSQL
-@app.post("/webhook")
-async def handle_webhook(request: Request):
-    if webhook_processor is None:
-        raise HTTPException(status_code=500, detail="Webhook processor not initialized")
-        
-    try:
-        body = await request.json()
-        # Process the webhook data and update RAG accordingly
-        success = webhook_processor.process_webhook(body)
-        
-        if success:
-            return {"message": "Webhook processed successfully"}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to process webhook")
-    except Exception as e:
-        print(f"Error processing webhook: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process webhook")
+        raise HTTPException(status_code=500, detail="Failed to process document")
 
 if __name__ == "__main__":
     import uvicorn

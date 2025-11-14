@@ -10,9 +10,41 @@ class RAGService:
         self.vector_store = PineconeService()
         self.llm_service = SambaNovaLLM()
         
+    def _chunk_text(self, text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:
+        """
+        Split text into chunks of specified size with overlap
+        
+        Args:
+            text: Text to chunk
+            chunk_size: Maximum size of each chunk
+            overlap: Number of characters to overlap between chunks
+            
+        Returns:
+            List of text chunks
+        """
+        chunks = []
+        start = 0
+        text_length = len(text)
+        
+        while start < text_length:
+            end = min(start + chunk_size, text_length)
+            chunk = text[start:end]
+            chunks.append(chunk)
+            
+            # Move start position
+            start = end - overlap
+            if start >= text_length:
+                break
+                
+            # If we're at the end and have a small chunk, break
+            if end == text_length:
+                break
+                
+        return chunks
+    
     def add_document(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Add a document to the RAG system
+        Add a document to the RAG system with chunking
         
         Args:
             content: Document content
@@ -22,23 +54,30 @@ class RAGService:
             True if successful, False otherwise
         """
         try:
-            # Generate embedding
-            embedding = self.embedding_service.get_single_embedding(content)
+            # Chunk the content
+            chunks = self._chunk_text(content)
             
-            # Create document ID
-            doc_id = str(uuid.uuid4())
-            
-            # Prepare metadata
-            if metadata is None:
-                metadata = {}
-            metadata["content"] = content
-            
-            # Store in vector database
-            vector_data = [{
-                "id": doc_id,
-                "values": embedding,
-                "metadata": metadata
-            }]
+            # Process each chunk
+            vector_data = []
+            for i, chunk in enumerate(chunks):
+                # Generate embedding
+                embedding = self.embedding_service.get_single_embedding(chunk)
+                
+                # Create document ID
+                doc_id = str(uuid.uuid4())
+                
+                # Prepare metadata
+                chunk_metadata = metadata.copy() if metadata else {}
+                chunk_metadata["content"] = chunk
+                chunk_metadata["chunk_index"] = i
+                chunk_metadata["total_chunks"] = len(chunks)
+                
+                # Store in vector database
+                vector_data.append({
+                    "id": doc_id,
+                    "values": embedding,
+                    "metadata": chunk_metadata
+                })
             
             return self.vector_store.upsert_vectors(vector_data)
         except Exception as e:
