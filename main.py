@@ -149,14 +149,27 @@ async def debug_test_document():
         logger.error(f"Error in debug test: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# RAG Query endpoint
 @app.post("/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
+    logger.info(f"Query endpoint accessed with query: {request.query}")
+    logger.info(f"Query parameters: top_k={request.top_k}")
     if rag_service is None:
+        logger.error("RAG service not initialized")
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-
-    top_k = request.top_k or 3
-    response = rag_service.query(request.query, top_k)
-    return QueryResponse(response=response)
+    # Use default value if top_k is None
+    top_k = request.top_k if request.top_k is not None else 3
+    logger.info(f"Querying RAG service with top_k: {top_k}")
+    
+    try:
+        response = rag_service.query(request.query, top_k)
+        logger.info("Query processed successfully")
+        logger.info(f"Response length: {len(response) if response else 0}")
+        return QueryResponse(response=response)
+    except Exception as e:
+        logger.error(f"Error processing query: {e}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 # ✅ FIXED BACKGROUND TASK — uses existing global rag_service
 def process_soap_notes_in_background(soap_text: str, metadata: dict):

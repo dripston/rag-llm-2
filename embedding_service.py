@@ -51,8 +51,10 @@ class SambaNovaEmbedding:
                 timeout=30  # Add timeout to prevent hanging
             )
             logger.info(f"SambaNova API response status: {response.status_code}")
+            logger.info(f"Response headers: {dict(response.headers)}")
         except Exception as e:
             logger.error(f"Error calling SambaNova API: {e}")
+            logger.exception(e)
             raise Exception(f"Error calling SambaNova API: {e}")
         
         if response.status_code != 200:
@@ -63,6 +65,7 @@ class SambaNovaEmbedding:
         data = response.json()
         embeddings = [item["embedding"] for item in data["data"]]
         logger.info(f"Embeddings generated successfully. Dimension: {len(embeddings[0]) if embeddings else 0}")
+        logger.info(f"Embedding model used for QUERY: {self.model}")  # Added required logging
         return embeddings
     
     def get_single_embedding(self, text: str) -> List[float]:

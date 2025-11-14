@@ -156,9 +156,20 @@ class RAGService:
     def query(self, query_text: str, top_k: int = 3) -> str:
         try:
             logger.info(f"Processing query: '{query_text}' with top_k={top_k}")
+            logger.info(f"Embedding model used for QUERY: E5-Mistral-7B-Instruct")
+            
+            # Add timeout for embedding generation
+            import time
+            start_time = time.time()
             query_embedding = self.embedding_service.get_single_embedding(query_text)
+            embedding_time = time.time() - start_time
+            logger.info(f"Embedding generation took {embedding_time:.2f} seconds")
+            logger.info(f"Query vector dimension: {len(query_embedding) if query_embedding else 0}")
 
+            start_time = time.time()
             similar_docs = self.vector_store.query_similar(query_embedding, top_k)
+            query_time = time.time() - start_time
+            logger.info(f"Pinecone query took {query_time:.2f} seconds")
             logger.info(f"Found {len(similar_docs)} similar documents")
 
             context_parts = []
@@ -186,6 +197,7 @@ class RAGService:
 
             context = "\n\n".join(context_parts)
             logger.info(f"Combined context length: {len(context)}")
+            logger.info(f"Context passed to LLM: {context[:500]}...")  # Log first 500 chars of context
 
             if context:
                 response = self.llm_service.generate_response_with_context(context, query_text)
@@ -197,7 +209,7 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error querying RAG system: {e}")
             logger.exception(e)
-            return "Sorry, an error occurred."
+            return "Sorry, an error occurred while processing your query."
 
     def update_document(self, doc_id: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
         self.vector_store.delete_vectors([doc_id])

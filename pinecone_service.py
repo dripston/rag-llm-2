@@ -95,12 +95,36 @@ class PineconeService:
                 )
 
             logger.info(f"Querying Pinecone (top_k={top_k})")
+            logger.info(f"Query vector dimension: {len(query_vector)}")
+            logger.info(f"Index dimension: {self.dimension}")
 
-            response = self.index.query(
-                vector=query_vector,
-                top_k=top_k,
-                include_metadata=True
-            )
+            # Add timeout and retry logic for Render deployment
+            import time
+            max_retries = 3
+            retry_delay = 1
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.index.query(
+                        vector=query_vector,
+                        top_k=top_k,
+                        include_metadata=True
+                    )
+                    break  # Success, break out of retry loop
+                except Exception as e:
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                    if attempt < max_retries - 1:  # Not the last attempt
+                        logger.info(f"Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        raise  # Re-raise the last exception
+
+            # Handle case where all retries failed
+            if response is None:
+                logger.error("All retry attempts failed")
+                return []
 
             # NEW serverless format = dict
             if isinstance(response, dict):
@@ -131,6 +155,7 @@ class PineconeService:
                     "metadata": meta
                 })
 
+            logger.info(f"Matches returned: {len(cleaned)}")
             return cleaned
 
         except Exception as e:
