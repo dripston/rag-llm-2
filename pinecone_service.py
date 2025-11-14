@@ -1,5 +1,5 @@
 import pinecone
-from pinecone import Pinecone, ServerlessSpec
+from pinecone import Pinecone
 import os
 from typing import List, Dict, Any
 import numpy as np
@@ -7,8 +7,7 @@ import numpy as np
 class PineconeService:
     def __init__(self):
         self.api_key = os.getenv("PINECONE_API_KEY")
-        self.index_name = os.getenv("PINECONE_INDEX_NAME")
-        self.environment = os.getenv("PINECONE_ENVIRONMENT")
+        self.index_name = os.getenv("PINECONE_INDEX_NAME", "medical-assistant-index")
         
         # Initialize Pinecone
         self.pc = Pinecone(api_key=self.api_key)
@@ -19,11 +18,16 @@ class PineconeService:
                 name=self.index_name,
                 dimension=int(os.getenv("EMBEDDING_DIMENSION", 4096)),
                 metric="cosine",
-                spec=ServerlessSpec(cloud="aws", region="us-west-2")
+                spec={
+                    "serverless": {
+                        "cloud": "aws",
+                        "region": "us-east-1"
+                    }
+                }
             )
         
         # Connect to the index
-        self.index = self.pc.Index(self.index_name)
+        self.index = self.pc.Index(name=self.index_name)
     
     def upsert_vectors(self, vectors: List[Dict[str, Any]]) -> bool:
         """
@@ -33,7 +37,16 @@ class PineconeService:
             vectors: List of dictionaries with 'id', 'values', and 'metadata'
         """
         try:
-            self.index.upsert(vectors=vectors)
+            # Convert to the format expected by Pinecone
+            formatted_vectors = []
+            for vector in vectors:
+                formatted_vectors.append({
+                    "id": vector["id"],
+                    "values": vector["values"],
+                    "metadata": vector["metadata"]
+                })
+            
+            self.index.upsert(vectors=formatted_vectors)
             return True
         except Exception as e:
             print(f"Error upserting vectors: {e}")
@@ -56,7 +69,9 @@ class PineconeService:
                 top_k=top_k,
                 include_metadata=True
             )
-            return response['matches']
+            # Convert to dictionary using vars() and access matches
+            response_dict = vars(response)
+            return response_dict.get('matches', [])
         except Exception as e:
             print(f"Error querying vectors: {e}")
             return []
