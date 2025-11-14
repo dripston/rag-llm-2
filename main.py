@@ -30,6 +30,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Log all incoming requests
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    # Log request details
+    logger.info(f"Incoming {request.method} request to {request.url}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    
+    # Log request body for POST requests
+    if request.method in ["POST", "PUT", "PATCH"]:
+        body = await request.body()
+        if body:
+            try:
+                body_str = body.decode("utf-8")
+                logger.info(f"Request body: {body_str}")
+            except Exception as e:
+                logger.warning(f"Could not decode request body: {e}")
+    
+    response = await call_next(request)
+    return response
+
 # Initialize services
 rag_service = None
 
@@ -143,6 +163,7 @@ async def debug_test_document():
 @app.post("/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
     logger.info(f"Query endpoint accessed with query: {request.query}")
+    logger.info(f"Query parameters: top_k={request.top_k}")
     if rag_service is None:
         logger.error("RAG service not initialized")
         raise HTTPException(status_code=500, detail="RAG service not initialized")
@@ -151,12 +172,15 @@ async def query_rag(request: QueryRequest):
     logger.info(f"Querying RAG service with top_k: {top_k}")
     response = rag_service.query(request.query, top_k)
     logger.info("Query processed successfully")
+    logger.info(f"Response length: {len(response) if response else 0}")
     return QueryResponse(response=response)
 
 # Add document endpoint - users send content via POST request
 @app.post("/documents")
 async def add_document(request: DocumentRequest):
     logger.info("Document submission endpoint accessed")
+    logger.info(f"Document content length: {len(request.content)}")
+    logger.info(f"Document metadata: {request.metadata}")
     if rag_service is None:
         logger.error("RAG service not initialized")
         raise HTTPException(status_code=500, detail="RAG service not initialized")
