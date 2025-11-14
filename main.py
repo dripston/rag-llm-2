@@ -1,8 +1,8 @@
 import logging
+import os
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
-import os
 from dotenv import load_dotenv
 from rag_service import RAGService
 import json
@@ -89,4 +89,6 @@ async def add_document(request: DocumentRequest):
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting application server...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
