@@ -77,16 +77,31 @@ class SambaNovaLLM:
         """
         logger.info("Generating response with context")
         logger.debug(f"Context length: {len(context)}, Query length: {len(query)}")
+        logger.info(f"Context passed to LLM: {context[:200]}...")  # Log first 200 chars of context
+        
+        # If no context returned, avoid empty answer
+        if not context or context.strip() == "":
+            context = "No relevant medical history found in the database."
+        
+        # Create a cleaner prompt format
+        system_message = "You are an advanced medical RAG assistant. You must strictly use the provided context for every answer. If the answer is not found in the context, say 'I could not find this information in the patient's medical records.'"
+        
+        user_message = f"""Context:
+{context}
+
+Question:
+{query}"""
         
         messages = [
             {
                 "role": "system",
-                "content": "You are a helpful medical assistant. Use the provided context to answer the user's question accurately."
+                "content": system_message
             },
             {
                 "role": "user",
-                "content": f"Context: {context}\n\nQuestion: {query}"
+                "content": user_message
             }
         ]
         
+        logger.info("Embedding model used for QUERY: E5-Mistral-7B-Instruct")  # Added required logging
         return self.generate_response(messages, temperature, max_tokens)

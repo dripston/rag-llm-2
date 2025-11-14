@@ -25,6 +25,7 @@ class SambaNovaEmbedding:
         Get embeddings for a list of texts using SambaNova API
         """
         logger.info(f"Generating embeddings for {len(texts)} texts")
+        logger.info(f"Embedding model used for INGESTION: {self.model}")  # Added required logging
         logger.debug(f"Text lengths: {[len(text) for text in texts]}")
         
         headers = {
@@ -59,6 +60,7 @@ class SambaNovaEmbedding:
         Get embedding for a single text
         """
         logger.debug(f"Generating embedding for single text with length: {len(text)}")
+        logger.info(f"Embedding model used for QUERY: {self.model}")  # Added required logging
         result = self.get_embeddings([text])[0]
         logger.debug(f"Single embedding generated with dimension: {len(result)}")
         return result

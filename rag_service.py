@@ -137,8 +137,27 @@ class RAGService:
                 logger.debug(f"Retrieved doc {i+1}: id={doc.get('id')}, score={doc.get('score')}")
             
             # Extract context from similar documents
-            context = "\n\n".join([doc["metadata"]["content"] for doc in similar_docs])
+            context_parts = []
+            for doc in similar_docs:
+                # Handle both dict and string formats for metadata
+                if isinstance(doc, dict) and "metadata" in doc:
+                    if isinstance(doc["metadata"], dict) and "content" in doc["metadata"]:
+                        context_parts.append(doc["metadata"]["content"])
+                    elif isinstance(doc["metadata"], str):
+                        # Try to parse metadata string
+                        try:
+                            import ast
+                            metadata_dict = ast.literal_eval(doc["metadata"])
+                            if "content" in metadata_dict:
+                                context_parts.append(metadata_dict["content"])
+                        except:
+                            logger.warning(f"Could not parse metadata string: {doc['metadata']}")
+                else:
+                    logger.warning(f"Unexpected document format: {doc}")
+            
+            context = "\n\n".join(context_parts)
             logger.debug(f"Context extracted with length: {len(context)}")
+            logger.info(f"Context for LLM: {context[:200]}...")  # Log first 200 chars
             
             # Generate response using LLM
             logger.debug("Generating response with LLM...")

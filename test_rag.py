@@ -2,15 +2,18 @@ import os
 import json
 from pinecone import Pinecone
 import requests
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
 
 # ----------------------------
 # CONFIG
 # ----------------------------
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "medical-rag")
+INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "medical-assistant-index")  # Fixed to match .env
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
-EMBED_MODEL = os.getenv("EMBEDDING_MODEL")
+EMBED_MODEL = os.getenv("EMBEDDING_MODEL", "E5-Mistral-7B-Instruct")  # Added default
 BASE_URL = "https://api.sambanova.ai/v1"
 
 
@@ -18,6 +21,15 @@ BASE_URL = "https://api.sambanova.ai/v1"
 # 1. TEST SAMBANOVA EMBEDDINGS
 # ----------------------------
 def get_sambanova_embedding(text):
+    # Check for required environment variables
+    if not SAMBANOVA_API_KEY:
+        print("❌ Error: SAMBANOVA_API_KEY not set in environment variables")
+        return None
+        
+    if not EMBED_MODEL:
+        print("❌ Error: EMBEDDING_MODEL not set in environment variables")
+        return None
+    
     headers = {
         "Authorization": f"Bearer {SAMBANOVA_API_KEY}",
         "Content-Type": "application/json"
@@ -53,17 +65,43 @@ def get_sambanova_embedding(text):
 # 2. TEST PINECONE INDEX
 # ----------------------------
 def test_pinecone_query(embed):
+    # Check for required environment variables
+    if not PINECONE_API_KEY:
+        print("❌ Error: PINECONE_API_KEY not set in environment variables")
+        return
+        
+    if not INDEX_NAME:
+        print("❌ Error: PINECONE_INDEX_NAME not set in environment variables")
+        return
+    
     pc = Pinecone(api_key=PINECONE_API_KEY)
 
     print("\n🔵 Fetching Pinecone index details…")
 
-    index = pc.Index(INDEX_NAME)
+    try:
+        index = pc.Index(INDEX_NAME)
+    except Exception as e:
+        print(f"❌ Error connecting to Pinecone index: {e}")
+        return
 
-    stats = index.describe_index_stats()
-    print("\n📊 Index Stats:")
-    print(json.dumps(stats, indent=4))
+    try:
+        stats = index.describe_index_stats()
+        print("\n📊 Index Stats:")
+        # Safely convert to string representation
+        print(str(stats))
+    except Exception as e:
+        print(f"❌ Error getting index stats: {e}")
+        return
 
-    index_dim = stats["dimension"]
+    # Get dimension from the stats - try multiple approaches
+    index_dim = 0
+    try:
+        # Try direct attribute access
+        index_dim = getattr(stats, 'dimension', 0)
+    except:
+        print("⚠️ Could not determine index dimension")
+        index_dim = 0
+        
     print(f"\n📌 Index dimension = {index_dim}")
 
     if index_dim != len(embed):
@@ -74,16 +112,28 @@ def test_pinecone_query(embed):
 
     print("\n🔵 Querying Pinecone…")
 
-    res = index.query(
-        vector=embed,
-        top_k=3,
-        include_metadata=True
-    )
+    try:
+        res = index.query(
+            vector=embed,
+            top_k=3,
+            include_metadata=True
+        )
+    except Exception as e:
+        print(f"❌ Error querying Pinecone: {e}")
+        return
 
     print("\n📥 Pinecone Query Response:")
-    print(json.dumps(res, indent=4))
+    # Safely convert response to string
+    print(str(res))
 
-    matches = res.get("matches", [])
+    # Access matches - try multiple approaches
+    matches = []
+    try:
+        # Try direct attribute access
+        matches = getattr(res, 'matches', [])
+    except:
+        print("⚠️ Could not access matches")
+        matches = []
 
     if not matches:
         print("\n⚠️ No matches found!")
