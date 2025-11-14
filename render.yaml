@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: medical-rag-chatbot
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONPATH
+        value: /app
