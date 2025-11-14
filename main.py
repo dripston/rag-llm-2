@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
@@ -84,6 +85,46 @@ async def debug_pinecone():
         logger.error(f"Error in Pinecone debug: {e}")
         logger.exception(e)
         raise HTTPException(status_code=500, detail=f"Error in Pinecone debug: {str(e)}")
+
+# Comprehensive debug endpoint
+@app.post("/debug/test-document")
+async def debug_test_document():
+    logger.info("Debug test document endpoint accessed")
+    if rag_service is None:
+        logger.error("RAG service not initialized")
+        raise HTTPException(status_code=500, detail="RAG service not initialized")
+    
+    try:
+        # Create a test document
+        test_content = "This is a test document for debugging the RAG system. Patient has fever and cough."
+        test_metadata = {"source": "debug_test", "timestamp": "2023-11-15"}
+        
+        logger.info("Adding test document...")
+        success = rag_service.add_document(test_content, test_metadata)
+        
+        if not success:
+            logger.error("Failed to add test document")
+            raise HTTPException(status_code=500, detail="Failed to add test document")
+        
+        logger.info("Test document added successfully")
+        
+        # Wait a moment for indexing
+        import time
+        time.sleep(1)
+        
+        # Query for the test document
+        logger.info("Querying for test document...")
+        query_text = "What are the patient's symptoms?"
+        response = rag_service.query(query_text, top_k=3)
+        
+        return {
+            "document_added": True,
+            "query_response": response
+        }
+    except Exception as e:
+        logger.error(f"Error in debug test: {e}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail=f"Error in debug test: {str(e)}")
 
 # RAG Query endpoint
 @app.post("/query", response_model=QueryResponse)
