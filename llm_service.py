@@ -1,13 +1,21 @@
+import logging
 import os
 import requests
 import json
 from typing import List, Dict, Any
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class SambaNovaLLM:
     def __init__(self):
         self.api_key = os.getenv("LLM_API_KEY")
         self.model = os.getenv("LLM_MODEL")
         self.base_url = "https://api.sambanova.ai/v1"
+        
+        logger.info("Initializing SambaNova LLM service...")
+        logger.info(f"Using model: {self.model}")
+        logger.info(f"Base URL: {self.base_url}")
         
     def generate_response(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 1024) -> str:
         """
@@ -21,6 +29,10 @@ class SambaNovaLLM:
         Returns:
             Generated response text
         """
+        logger.info("Generating response with LLM")
+        logger.debug(f"Number of messages: {len(messages)}")
+        logger.debug(f"Temperature: {temperature}, Max tokens: {max_tokens}")
+        
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -33,6 +45,7 @@ class SambaNovaLLM:
             "max_tokens": max_tokens
         }
         
+        logger.debug("Calling SambaNova chat completions API...")
         response = requests.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
@@ -40,10 +53,14 @@ class SambaNovaLLM:
         )
         
         if response.status_code != 200:
+            logger.error(f"Error generating response: {response.text}")
+            logger.error(f"Status code: {response.status_code}")
             raise Exception(f"Error generating response: {response.text}")
             
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        result = data["choices"][0]["message"]["content"]
+        logger.info(f"Response generated successfully. Response length: {len(result)}")
+        return result
     
     def generate_response_with_context(self, context: str, query: str, temperature: float = 0.7, max_tokens: int = 1024) -> str:
         """
@@ -58,6 +75,9 @@ class SambaNovaLLM:
         Returns:
             Generated response text
         """
+        logger.info("Generating response with context")
+        logger.debug(f"Context length: {len(context)}, Query length: {len(query)}")
+        
         messages = [
             {
                 "role": "system",
