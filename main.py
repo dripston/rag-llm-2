@@ -72,9 +72,12 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     response: str
 
-class DocumentRequest(BaseModel):
-    content: str
-    metadata: Optional[dict] = None
+# SOAP Notes format model
+class SOAPNotesRequest(BaseModel):
+    patient_id: str
+    soap_notes: str
+    date_time: str
+    patient_name: str
 
 # Health check endpoint
 @app.get("/")
@@ -175,23 +178,35 @@ async def query_rag(request: QueryRequest):
     logger.info(f"Response length: {len(response) if response else 0}")
     return QueryResponse(response=response)
 
-# Add document endpoint - users send content via POST request
-@app.post("/documents")
-async def add_document(request: DocumentRequest):
-    logger.info("Document submission endpoint accessed")
-    logger.info(f"Document content length: {len(request.content)}")
-    logger.info(f"Document metadata: {request.metadata}")
+# Add SOAP notes endpoint - accepts specific SOAP notes format
+@app.post("/soap-notes")
+async def add_soap_notes(request: SOAPNotesRequest):
+    logger.info("SOAP notes submission endpoint accessed")
+    logger.info(f"Patient ID: {request.patient_id}")
+    logger.info(f"Patient Name: {request.patient_name}")
+    logger.info(f"Date/Time: {request.date_time}")
+    logger.info(f"SOAP Notes length: {len(request.soap_notes)}")
+    
     if rag_service is None:
         logger.error("RAG service not initialized")
         raise HTTPException(status_code=500, detail="RAG service not initialized")
-    logger.info(f"Adding document with content length: {len(request.content)}")
-    success = rag_service.add_document(request.content, request.metadata)
+    
+    # Prepare metadata
+    metadata = {
+        "patient_id": request.patient_id,
+        "patient_name": request.patient_name,
+        "date_time": request.date_time,
+        "source": "soap_notes"
+    }
+    
+    logger.info(f"Adding SOAP notes with metadata: {metadata}")
+    success = rag_service.add_document(request.soap_notes, metadata)
     if success:
-        logger.info("Document added successfully")
-        return {"message": "Document chunked, embedded, and stored successfully"}
+        logger.info("SOAP notes added successfully")
+        return {"message": "SOAP notes chunked, embedded, and stored successfully"}
     else:
-        logger.error("Failed to add document")
-        raise HTTPException(status_code=500, detail="Failed to process document")
+        logger.error("Failed to add SOAP notes")
+        raise HTTPException(status_code=500, detail="Failed to process SOAP notes")
 
 if __name__ == "__main__":
     import uvicorn
